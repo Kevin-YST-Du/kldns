@@ -46,6 +46,7 @@ func NewRouter() *gin.Engine {
 		admin := api.Group("/admin", middleware.APIBearerAuth(), middleware.OpenAPIAccessOnly(), middleware.AdminOnly())
 		{
 			admin.GET("/users", apiHandler((*AdminListController).Users))
+			admin.POST("/users", apiHandler((*AdminListController).CreateUser)) // ⬅️ 新增这一行
 			admin.PUT("/users/:id", apiHandler((*AdminListController).SaveUser))
 			admin.DELETE("/users/:id", apiHandler((*AdminListController).DeleteUser))
 			admin.POST("/users/:id/points", apiHandler((*AdminListController).AdjustUserPoints))

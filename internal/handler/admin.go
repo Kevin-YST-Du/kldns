@@ -110,6 +110,62 @@ func (c *AdminListController) SaveUser() {
 	c.OK(map[string]any{"updated": true})
 }
 
+// ⬇️ 控制器方法（放在 internal/handler/admin.go 中）
+func (c *AdminListController) CreateUser() {
+	_, ok := c.CurrentUser()
+	if !ok {
+		return
+	}
+	var input repository.UserWrite
+	if !c.BindJSON(&input) {
+		return
+	}
+	input.Username = strings.TrimSpace(input.Username)
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+
+	if len(input.Username) < 4 {
+		c.Fail(http.StatusBadRequest, apperrors.CodeInvalidArgument, "用户名至少 4 位")
+		return
+	}
+	if input.Email != "" && !validation.IsValidEmail(input.Email) {
+		c.Fail(http.StatusBadRequest, apperrors.CodeInvalidArgument, "邮箱格式不正确")
+		return
+	}
+	if input.GroupID <= 0 {
+		c.Fail(http.StatusBadRequest, apperrors.CodeInvalidArgument, "请选择用户组")
+		return
+	}
+	if input.Status < 0 || input.Status > 2 {
+		c.Fail(http.StatusBadRequest, apperrors.CodeInvalidArgument, "用户状态不正确")
+		return
+	}
+
+	var raw struct {
+		Password string `json:"password"`
+	}
+	_ = json.Unmarshal(c.RawBody(), &raw)
+	if len(strings.TrimSpace(raw.Password)) < 8 {
+		c.Fail(http.StatusBadRequest, apperrors.CodeInvalidArgument, "密码至少 8 位")
+		return
+	}
+
+	hash, err := auth.HashPassword(raw.Password)
+	if err != nil {
+		c.Internal("生成密码哈希失败")
+		return
+	}
+	input.PasswordHash = hash
+	input.SID = randomSID()
+
+	id, err := repository.NewAdminRepository(runtime.DB()).CreateUser(c.Ctx.Request.Context(), input)
+	if err != nil {
+		c.Fail(http.StatusConflict, apperrors.CodeConflict, "账号或邮箱已被使用")
+		return
+	}
+
+	c.OK(map[string]any{"id": id})
+}
+
 func (c *AdminListController) Groups() {
 	items, err := repository.NewAdminRepository(runtime.DB()).ListGroups(c.Ctx.Request.Context(), repository.GroupFilter{
 		Keyword: strings.TrimSpace(c.GetString("keyword")),

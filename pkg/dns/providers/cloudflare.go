@@ -115,7 +115,10 @@ func (p *cloudflareProvider) ListZones(ctx context.Context) ([]dns.Zone, error) 
 }
 
 func (p *cloudflareProvider) ListRecordLines(context.Context, dns.Zone) ([]dns.RecordLine, error) {
-	return []dns.RecordLine{{ID: "0", Name: "默认"}, {ID: "1", Name: "CDN"}}, nil
+	return []dns.RecordLine{
+		{ID: "0", Name: "默认 (仅 DNS / 灰色云)"},
+		{ID: "1", Name: "开启 CDN 代理 (小黄云)"},
+	}, nil
 }
 
 func (p *cloudflareProvider) CreateRecord(ctx context.Context, zone dns.Zone, input dns.RecordInput) (dns.Record, error) {
@@ -284,7 +287,7 @@ func cloudflareLine(proxied bool) string {
 	if proxied {
 		return "CDN"
 	}
-	return "默认"
+	return "仅DNS"
 }
 
 func cloudflareRecordToDomain(record cloudflareRecord, domain string) dns.Record {

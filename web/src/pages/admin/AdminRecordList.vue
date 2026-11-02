@@ -127,7 +127,7 @@
 
 <script setup lang="ts">
 import { apiErrorMessage } from '../../api/errors'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CirclePlus } from 'lucide-vue-next'
 import {
@@ -174,12 +174,35 @@ const form = reactive({
 const allRecordTypes = computed(() => Array.from(new Set(domains.value.flatMap((domain) => domainTypes(domain)))).sort())
 const currentTypes = computed(() => domainTypes(domains.value.find((domain) => domain.id === form.did)))
 const currentLineOptions = computed(() => {
-  const options = lineOptions(editing.value)
+  const isProxyable = ['A', 'AAAA', 'CNAME'].includes(form.type)
+  const options: LineOption[] = []
+
+  if (isProxyable) {
+    options.push({ id: '1', name: 'CDN (小黄云)' })
+    options.push({ id: '0', name: '仅 DNS (灰色云)' })
+  } else {
+    options.push({ id: '0', name: '默认 (仅 DNS)' })
+  }
+
+  // 兼容原本存在的其他未知线路
+  if (editing.value?.line_id && editing.value.line_id !== '0' && editing.value.line_id !== '1') {
+    options.push({ id: editing.value.line_id, name: editing.value.line || editing.value.line_id })
+  }
   if (!options.some((line) => line.id === form.line_id)) {
-    return [...options, { id: form.line_id, name: editing.value?.line || form.line_id }]
+    options.push({ id: form.line_id, name: editing.value?.line || form.line_id })
   }
   return options
 })
+
+watch(() => form.type, (newType) => {
+  const isProxyable = ['A', 'AAAA', 'CNAME'].includes(newType)
+  if (!isProxyable && form.line_id === '1') {
+    form.line_id = '0'
+  } else if (isProxyable && !editing.value && form.line_id === '0') {
+    form.line_id = '1'
+  }
+})
+
 onMounted(load)
 
 async function load() {
@@ -210,13 +233,16 @@ function openCreate() {
   editing.value = null
   const domain = domains.value[0]
   const user = users.value.find((item) => item.status !== 0) || users.value[0]
+  const defaultType = domainTypes(domain)[0] || 'A'
+  const isProxyable = ['A', 'AAAA', 'CNAME'].includes(defaultType)
+  
   Object.assign(form, {
     uid: user?.id || 0,
     did: domain?.id || 0,
     name: '',
-    type: domainTypes(domain)[0] || 'A',
+    type: defaultType,
     value: '',
-    line_id: '0',
+    line_id: isProxyable ? '1' : '0',
   })
   dialogVisible.value = true
 }
@@ -238,7 +264,8 @@ function syncDomainForm() {
   if (!currentTypes.value.includes(form.type)) {
     form.type = currentTypes.value[0] || 'A'
   }
-  form.line_id = '0'
+  const isProxyable = ['A', 'AAAA', 'CNAME'].includes(form.type)
+  form.line_id = isProxyable ? '1' : '0'
 }
 
 async function save() {
@@ -314,8 +341,13 @@ function domainTypes(domain?: AdminDomain) {
 }
 
 function lineOptions(record?: RecordItem | null): LineOption[] {
-  const options: LineOption[] = [{ id: '0', name: '默认' }]
-  if (record?.line_id && record.line_id !== '0') {
+  // 手动注入 CDN 代理选项，ID 为 '1' 对应后端 Cloudflare 开启代理
+  const options: LineOption[] = [
+    { id: '0', name: '默认 (仅 DNS)' },
+    { id: '1', name: 'CDN (小黄云)' }
+  ]
+  // 兼容原本存在的其他未知线路
+  if (record?.line_id && record.line_id !== '0' && record.line_id !== '1') {
     options.push({ id: record.line_id, name: record.line || record.line_id })
   }
   return options

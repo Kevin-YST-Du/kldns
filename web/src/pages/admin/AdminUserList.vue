@@ -5,6 +5,7 @@
         <h1>用户管理</h1>
         <p class="resource-note">查看平台账号、用户组、积分和账号状态。</p>
       </div>
+      <el-button type="primary" @click="openCreate">新增用户</el-button>
     </header>
     <div class="toolbar-row">
       <el-input v-model="keyword" clearable placeholder="搜索账号或邮箱" class="toolbar-control wide-admin-search" />
@@ -60,29 +61,29 @@
       </div>
     </div>
 
-    <el-dialog v-model="dialogVisible" title="编辑用户" width="min(560px, 94vw)">
+    <el-dialog v-model="dialogVisible" :title="editing ? '编辑用户' : '新增用户'" width="min(560px, 94vw)">
       <el-form label-position="top">
         <div class="user-form-grid">
           <el-form-item label="账号">
-            <el-input v-model="form.username" autocomplete="off" />
+            <el-input v-model="form.username" autocomplete="off" :disabled="Boolean(editing && editing.id === 1)" />
           </el-form-item>
           <el-form-item label="邮箱">
             <el-input v-model="form.email" autocomplete="off" />
           </el-form-item>
           <el-form-item label="用户组">
-            <el-select v-model="form.group_id" class="full-control" :disabled="editing?.id === 1">
+            <el-select v-model="form.group_id" class="full-control" :disabled="Boolean(editing && editing.id === 1)">
               <el-option v-for="group in groups" :key="group.id" :label="group.name" :value="group.id" />
             </el-select>
           </el-form-item>
           <el-form-item label="审核状态">
-            <el-select v-model="form.status" class="full-control" :disabled="editing?.id === 1">
+            <el-select v-model="form.status" class="full-control" :disabled="Boolean(editing && editing.id === 1)">
               <el-option label="已审核" :value="2" />
               <el-option label="待审核" :value="1" />
               <el-option label="禁用" :value="0" />
             </el-select>
           </el-form-item>
-          <el-form-item label="重置密码">
-            <el-input v-model="form.password" type="password" show-password autocomplete="new-password" placeholder="留空不修改" />
+          <el-form-item :label="editing ? '重置密码' : '设置密码'">
+            <el-input v-model="form.password" type="password" show-password autocomplete="new-password" :placeholder="editing ? '留空不修改' : '必须填写，至少 8 位'" />
           </el-form-item>
         </div>
       </el-form>
@@ -127,7 +128,7 @@
 import { apiErrorMessage } from '../../api/errors'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { adjustAdminUserPoints, deleteAdminUser, listAdminGroups, listAdminUsersPage, saveAdminUser, type AdminGroup, type AdminUser } from '../../api/admin'
+import { adjustAdminUserPoints, deleteAdminUser, listAdminGroups, listAdminUsersPage, saveAdminUser, createAdminUser, type AdminGroup, type AdminUser } from '../../api/admin'
 
 type PointAdjustMode = 'increase' | 'decrease'
 
@@ -227,6 +228,19 @@ function isProtectedUser(row: AdminUser) {
   return row.id === 1
 }
 
+// ⬇️ 把 openCreate 和新的 openEdit 粘贴在这里，覆盖掉原本旧的 openEdit
+function openCreate() {
+  editing.value = null
+  Object.assign(form, {
+    username: '',
+    email: '',
+    group_id: groups.value.find(g => g.name.includes('普通'))?.id || 100,
+    status: 2, 
+    password: '',
+  })
+  dialogVisible.value = true
+}
+
 function openEdit(row: AdminUser) {
   editing.value = row
   Object.assign(form, {
@@ -282,29 +296,43 @@ async function remove(row: AdminUser) {
 }
 
 async function save() {
-  if (!editing.value) return
   if (!form.username.trim()) {
     ElMessage.warning('请输入账号')
     return
   }
-  if (form.password && form.password.length < 8) {
+  // 如果是新建，必须填密码；如果是编辑，可以不填
+  if (!editing.value && (!form.password || form.password.length < 8)) {
+    ElMessage.warning('新建用户密码必须填写且至少 8 位')
+    return
+  }
+  if (editing.value && form.password && form.password.length < 8) {
     ElMessage.warning('密码至少 8 位')
     return
   }
+
   saving.value = true
   try {
-    await saveAdminUser(editing.value.id, {
+    const payload = {
       username: form.username.trim(),
       email: form.email.trim(),
       group_id: form.group_id,
       status: form.status,
       password: form.password,
-    })
-    ElMessage.success('用户已保存')
+    }
+
+    if (editing.value) {
+      await saveAdminUser(editing.value.id, payload)
+      ElMessage.success('用户已更新')
+    } else {
+      // 调用新建接口
+      await createAdminUser(payload)
+      ElMessage.success('新用户已创建')
+    }
+    
     dialogVisible.value = false
     await load()
   } catch (error) {
-    ElMessage.error(apiErrorMessage(error, '保存用户失败'))
+    ElMessage.error(apiErrorMessage(error, editing.value ? '更新用户失败' : '创建用户失败'))
   } finally {
     saving.value = false
   }

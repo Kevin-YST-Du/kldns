@@ -196,6 +196,10 @@ export function listAdminUsersPage(params: AdminUserQuery & PageQuery) {
   return http.get<unknown, ApiEnvelope<PageResult<AdminUser>>>('/admin/users', { params })
 }
 
+export function createAdminUser(data: Partial<AdminUser>) {
+  return http.post<unknown, ApiEnvelope<{ id: number }>>('/admin/users', data)
+}
+
 export function saveAdminUser(
   id: number,
   payload: {

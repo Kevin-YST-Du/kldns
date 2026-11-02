@@ -135,7 +135,25 @@ const dnsPolicy = reactive({ unlimitedSubdomainRecords: true })
 const recordTypes = computed(() => Array.from(new Set(subdomains.value.flatMap((item) => item.record_types || []))).sort())
 const currentSubdomain = computed(() => subdomains.value.find((item) => item.id === form.subdomain_id))
 const currentTypes = computed(() => currentSubdomain.value?.record_types || recordTypes.value)
-const currentLineOptions = computed(() => [{ id: '0', name: '默认' }])
+
+const currentLineOptions = computed(() => {
+  const isProxyable = ['A', 'AAAA', 'CNAME'].includes(form.type)
+  const options: { id: string; name: string }[] = []
+
+  if (isProxyable) {
+    options.push({ id: '1', name: 'CDN (小黄云)' })
+    options.push({ id: '0', name: '仅 DNS (灰色云)' })
+  } else {
+    options.push({ id: '0', name: '默认 (仅 DNS)' })
+  }
+
+  // 兼容原本存在的其他未知线路
+  if (editing.value?.line_id && editing.value.line_id !== '0' && editing.value.line_id !== '1') {
+    options.push({ id: editing.value.line_id, name: editing.value.line || editing.value.line_id })
+  }
+  return options
+})
+
 const policyNote = computed(() =>
   dnsPolicy.unlimitedSubdomainRecords
     ? '选择已注册二级域名，维护其解析记录。'
@@ -143,6 +161,15 @@ const policyNote = computed(() =>
 )
 const hostPlaceholder = computed(() => (dnsPolicy.unlimitedSubdomainRecords ? '@、* 或 www' : '@'))
 const pagedRecords = computed(() => records.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+
+watch(() => form.type, (newType) => {
+  const isProxyable = ['A', 'AAAA', 'CNAME'].includes(newType)
+  if (!isProxyable && form.line_id === '1') {
+    form.line_id = '0'
+  } else if (isProxyable && !editing.value && form.line_id === '0') {
+    form.line_id = '1'
+  }
+})
 
 watch(pageSize, () => {
   page.value = 1
@@ -179,7 +206,16 @@ async function loadRecords() {
 function openCreate() {
   editing.value = null
   const selected = subdomains.value.find((item) => item.id === filters.subdomain_id) || subdomains.value[0]
-  Object.assign(form, { subdomain_id: selected?.id || 0, name: defaultHostName(), type: selected?.record_types?.[0] || 'A', value: '', line_id: '0' })
+  const defaultType = selected?.record_types?.[0] || 'A'
+  const isProxyable = ['A', 'AAAA', 'CNAME'].includes(defaultType)
+  
+  Object.assign(form, { 
+    subdomain_id: selected?.id || 0, 
+    name: defaultHostName(), 
+    type: defaultType, 
+    value: '', 
+    line_id: isProxyable ? '1' : '0' 
+  })
   dialogVisible.value = true
 }
 
